@@ -4,6 +4,7 @@ import (
 	"backend/database"
 	"backend/schema"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -70,23 +71,61 @@ func generateKey(userID string) (string, error) {
 	return token.SignedString(secret)
 }
 
-func AuthMiddlewareKey(c *gin.Context) gin.HandlerFunc {
-	authHeader := c.GetHeader("Authorization")
-	if authHeader == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Header dibutuhkan"})
-		return nil
-	}
-	tokenPart := strings.SplitN(authHeader, " ", 2)
-	if len(tokenPart) != 2 || tokenPart[0] != "Bearer" || strings.TrimSpace(tokenPart[1]) == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "format tidak sesuai"})
-		return nil
-	}
-	tokenString := strings.TrimSpace(tokenPart[1])
+func AuthMiddlewareKey() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Tidak dapat mengambil header"})
+			return
+		}
+		tokenParts := strings.SplitN(authHeader, " ", 2)
+		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" || tokenParts[1] == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Format tidak sesuai"})
+			return
+		}
+		tokenString := strings.TrimSpace(tokenParts[1])
+		secret, err := getSecretKey()
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authentication Unavailable"})
+			return
+		}
+		claims := schema.Claims{}
+		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+			if token.Method.Alg() != "ES256" {
+				return nil, fmt.Errorf("Unexpected Algoritma: %v", token.Header["alg"])
+			}
+			return []byte(secret), nil
+		})
+		if err != nil {
+			if errors.Is(err, jwt.ErrTokenExpired) {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token sudah expired"})
+				return
+			}
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token sudah tidak valid"})
+			return
+		}
+		if !token.Valid {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token tidak sah"})
+			return
+		}
+		IdUser := claims.UserID
+		c.Set("UserID", IdUser)
 
-	secret, err := getSecretKey()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Token tidak valid atau expired"})
-		return nil
+		c.Next()
+	}
+}
+
+func SignUpNewUser(c *gin.Context) {
+	var person schema.SignUpSchema
+	if err := c.ShouldBindBodyWithJSON(&person); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	var user database.Customer
+	err := database.DB.Where("email =? ", person.Email).First(&user).Error
+	if err == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Email already used. Please login"})
+		return
 	}
 
 }
