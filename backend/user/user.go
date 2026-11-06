@@ -5,6 +5,7 @@ import (
 	"backend/schema"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/resend/resend-go/v4"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -126,6 +128,31 @@ func SignUpNewUser(c *gin.Context) {
 	if err == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "Email already used. Please login"})
 		return
+	}
+	HashedPassword, errB := bcrypt.GenerateFromPassword([]byte(person.Password), 12)
+	if errB != nil {
+		log.Fatalln("Cannot Generate password")
+		return
+	}
+
+	resendAPI := os.Getenv("RESEND_API")
+	secret := os.Getenv("SECRET_KEY")
+
+	if resendAPI != "" && secret != "" {
+		client := resend.NewClient(resendAPI)
+		verifyLink := fmt.Sprintf("http://localhost:3000/api/verify?token=%s&email=%s", secret, person.Email)
+
+		params := &resend.SendEmailRequest{
+			From:    "Onboarding <onboarding@resend.dev>",
+			To:      []string{person.Email},
+			Subject: "Verifikasi Email Dev",
+			Html:    fmt.Sprintf("<p>Klik link berikut untuk verifikasi: <a href='%s'>Verifikasi</a></p>", verifyLink),
+		}
+		if _, err := client.Emails.Send(params); err != nil {
+			log.Fatalln("Gagal mengirim email verifikasi")
+			return
+		}
+
 	}
 
 }

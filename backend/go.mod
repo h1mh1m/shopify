@@ -11,6 +11,7 @@ require (
 require (
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
+	github.com/resend/resend-go/v4 v4.12.0 // indirect
 )
 
 require (
