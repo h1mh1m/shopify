@@ -38,6 +38,16 @@ func loginUser(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
+	tokenStr, err := generateKey(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"message": "You are Logged in",
+		"token":   tokenStr,
+		"user":    tokenStr,
+	})
 
 }
 
@@ -154,5 +164,16 @@ func SignUpNewUser(c *gin.Context) {
 		}
 
 	}
-
+	addUser := schema.SignUpSchema{
+		Email:        person.Email,
+		Nama:         person.Nama,
+		NomerTelepon: person.NomerTelepon,
+		Password:     string(HashedPassword),
+	}
+	erro := database.DB.Create(&addUser).Error
+	if erro != nil {
+		log.Fatalln("Cannot create new customer")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "You are in"})
 }
